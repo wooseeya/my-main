@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>부동산 상담 챗봇</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@500;700&family=IBM+Plex+Sans+KR:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* 이 페이지는 직원용 index.html과 완전히 분리된 별도 파일이다 - 매물/의뢰인
+     데이터를 다루는 JS나 API 호출은 이 안에 하나도 없다(오직 /public/chat 대화
+     엔드포인트 하나만 호출한다). 로그인도 필요 없다 - 고객이 직접 여는 화면이다. */
+  :root{
+    --paper:#ECEAE2; --paper-raised:#F7F5EF; --paper-sunken:#E2DFD4;
+    --ink:#1C2333; --ink-soft:#535C72; --ink-faint:#8A8F9E;
+    --line:#D5D1C3; --accent:#B5502E; --accent-soft:#E8D9CC;
+    --radius:3px;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:'IBM Plex Sans KR', system-ui, sans-serif;
+    display:flex; flex-direction:column;
+  }
+
+  /* ---- 헤더: 접수창구 티켓 느낌의 얇은 헤더 ---- */
+  header{
+    flex:0 0 auto; padding:16px 18px 14px; background:var(--paper-raised);
+    border-bottom:1px solid var(--line);
+    display:flex; align-items:baseline; justify-content:space-between; gap:10px;
+  }
+  header h1{
+    font-family:'Noto Serif KR', serif; font-weight:700; font-size:17px; margin:0;
+    letter-spacing:-0.01em;
+  }
+  header .badge{
+    font-family:'IBM Plex Mono', monospace; font-size:10.5px; color:var(--ink-faint);
+    border:1px solid var(--line); border-radius:20px; padding:3px 9px; white-space:nowrap;
+  }
+
+  /* ---- 대화 영역 ---- */
+  #thread{
+    flex:1 1 auto; overflow-y:auto; padding:18px 14px 8px;
+    display:flex; flex-direction:column; gap:12px;
+    max-width:560px; width:100%; margin:0 auto;
+  }
+  .row{ display:flex; }
+  .row.user{ justify-content:flex-end; }
+  .row.bot{ justify-content:flex-start; }
+  .bubble{
+    max-width:82%; padding:10px 13px; font-size:13.5px; line-height:1.6;
+    white-space:pre-wrap; word-break:break-word;
+  }
+  .row.user .bubble{
+    background:var(--ink); color:var(--paper-raised); border-radius:12px 12px 2px 12px;
+  }
+  .row.bot .bubble{
+    background:var(--paper-raised); border:1px solid var(--line); color:var(--ink);
+    border-radius:12px 12px 12px 2px;
+  }
+  .row.bot .bubble.system{
+    background:transparent; border:1px dashed var(--line); color:var(--ink-soft);
+    font-family:'IBM Plex Mono', monospace; font-size:11.5px; border-radius:var(--radius);
+  }
+
+  /* 문의가 실제로 접수됐을 때 보여주는 "접수증" 카드 - 내부 도구의 문서/서식
+     톤을 고객 화면에도 살짝 이어받아, 이 대화가 실제 처리로 이어진다는 신뢰를 준다. */
+  .ticket{
+    max-width:82%; border:1px solid var(--accent); background:var(--accent-soft);
+    border-radius:6px; padding:12px 14px; font-size:12.5px; color:var(--ink);
+  }
+  .ticket .ticket-title{
+    font-family:'IBM Plex Mono', monospace; font-size:10.5px; letter-spacing:0.06em;
+    color:var(--accent); font-weight:600; margin-bottom:4px;
+  }
+
+  .loading-row{ display:flex; justify-content:flex-start; }
+  .typing{
+    display:inline-flex; gap:4px; padding:12px 14px; background:var(--paper-raised);
+    border:1px solid var(--line); border-radius:12px 12px 12px 2px;
+  }
+  .typing span{
+    width:6px; height:6px; border-radius:50%; background:var(--ink-faint);
+    animation:blink 1.1s infinite ease-in-out;
+  }
+  .typing span:nth-child(2){ animation-delay:.15s; }
+  .typing span:nth-child(3){ animation-delay:.3s; }
+  @keyframes blink{ 0%,80%,100%{opacity:.25;} 40%{opacity:1;} }
+
+  /* ---- 입력창 ---- */
+  #composer{
+    flex:0 0 auto; border-top:1px solid var(--line); background:var(--paper-raised);
+    padding:10px 14px calc(10px + env(safe-area-inset-bottom));
+  }
+  #composerInner{
+    max-width:560px; margin:0 auto; display:flex; gap:8px; align-items:flex-end;
+  }
+  #msgInput{
+    flex:1; resize:none; max-height:110px; min-height:40px;
+    padding:9px 12px; border:1px solid var(--line); border-radius:20px;
+    background:var(--paper); color:var(--ink); font-family:inherit; font-size:13.5px;
+    line-height:1.5;
+  }
+  #msgInput:focus{ outline:none; border-color:var(--accent); }
+  #sendBtn{
+    flex:0 0 auto; width:40px; height:40px; border-radius:50%; border:none;
+    background:var(--ink); color:var(--paper-raised); cursor:pointer; font-size:16px;
+    display:flex; align-items:center; justify-content:center; transition:opacity .12s ease;
+  }
+  #sendBtn:disabled{ opacity:.4; cursor:default; }
+  #sendBtn:hover:not(:disabled){ opacity:.85; }
+
+  .disclaimer{
+    max-width:560px; margin:0 auto; padding-top:8px; text-align:center;
+    font-size:10.5px; color:var(--ink-faint); font-family:'IBM Plex Mono', monospace;
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    .typing span{ animation:none; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1 id="agencyTitle">부동산 상담</h1>
+  <span class="badge">AI 상담원 · 실제 매물 확인은 담당자가 연락드려요</span>
+</header>
+
+<div id="thread"></div>
+
+<div id="composer">
+  <div id="composerInner">
+    <textarea id="msgInput" placeholder="예: 강남 쪽 전세 아파트 찾고 있어요" rows="1"></textarea>
+    <button id="sendBtn" onclick="sendMessage()" aria-label="전송">➤</button>
+  </div>
+  <p class="disclaimer">AI가 조건을 정리해 접수하며, 실제 매물 안내는 담당 중개사가 직접 연락드립니다.</p>
+</div>
+
+<script>
+// 대화 기록은 이 브라우저 세션에만 있다 - 서버는 아무 상태도 들고 있지 않고,
+// 매 요청마다 지금까지의 대화 전체를 다시 보낸다(로그인이 없어 사용자를 구분할
+// 방법 자체가 없으므로 세션 개념을 만들지 않았다).
+let history = [];
+let sending = false;
+
+const GREETING = "안녕하세요! 어떤 매물을 찾고 계신가요? 매매·전세·월세 중 어떤 거래를 원하시는지부터 편하게 말씀해주세요.";
+
+// ---------------------------------------------------------------------------
+// API 서버 주소
+// ---------------------------------------------------------------------------
+// 이 페이지를 main.py가 "/chat"으로 직접 서빙할 때는 페이지와 API 서버가 같은
+// 주소라 비워둬도(=window.location.origin) 자동으로 맞다. 하지만 GitHub Pages
+// 처럼 이 HTML 파일 하나만 별도 정적 호스팅에 올려서 쓰는 경우엔 페이지 주소와
+// API 서버 주소가 서로 다르므로, 아래 API_BASE_URL에 백엔드가 실제로 떠 있는
+// 주소(https://로 시작, 끝에 슬래시(/) 없이)를 반드시 직접 채워 넣어야 한다.
+// 예: const API_BASE_URL = "https://your-backend.onrender.com";
+// (GitHub Pages는 정적 파일만 서빙할 뿐 main.py 자체를 실행해주진 않으므로,
+//  백엔드는 별도의 서버/클라우드에 항상 따로 띄워둬야 한다.)
+const API_BASE_URL = "";  // 비워두면 이 페이지와 같은 주소를 API 서버로 사용
+
+function apiBase(){
+  return API_BASE_URL || window.location.origin;
+}
+
+function scrollToBottom(){
+  const t = document.getElementById('thread');
+  t.scrollTop = t.scrollHeight;
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+function appendBubble(role, text){
+  const thread = document.getElementById('thread');
+  const row = document.createElement('div');
+  row.className = 'row ' + (role === 'user' ? 'user' : 'bot');
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  bubble.textContent = text;
+  row.appendChild(bubble);
+  thread.appendChild(row);
+  scrollToBottom();
+}
+
+function appendTicket(){
+  const thread = document.getElementById('thread');
+  const row = document.createElement('div');
+  row.className = 'row bot';
+  row.innerHTML = `
+    <div class="ticket">
+      <div class="ticket-title">✓ 문의 접수 완료</div>
+      말씀해주신 조건이 담당 중개사에게 전달됐어요. 확인 후 알려주신 연락처로 연락드릴게요.
+    </div>`;
+  thread.appendChild(row);
+  scrollToBottom();
+}
+
+function showTyping(){
+  const thread = document.getElementById('thread');
+  const row = document.createElement('div');
+  row.className = 'row bot loading-row';
+  row.id = 'typingRow';
+  row.innerHTML = `<div class="typing"><span></span><span></span><span></span></div>`;
+  thread.appendChild(row);
+  scrollToBottom();
+}
+function hideTyping(){
+  document.getElementById('typingRow')?.remove();
+}
+
+function autoResize(){
+  const el = document.getElementById('msgInput');
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 110) + 'px';
+}
+
+async function sendMessage(){
+  if(sending) return;
+  const input = document.getElementById('msgInput');
+  const text = input.value.trim();
+  if(!text) return;
+  input.value = '';
+  autoResize();
+
+  appendBubble('user', text);
+  history.push({role:'user', content:text});
+
+  sending = true;
+  document.getElementById('sendBtn').disabled = true;
+  showTyping();
+
+  try{
+    const res = await fetch(apiBase() + '/public/chat', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({messages: history}),
+    });
+    hideTyping();
+    if(!res.ok){
+      let msg = '죄송합니다, 잠시 후 다시 시도해주세요.';
+      try{ const j = await res.json(); msg = j.detail || msg; }catch(e){}
+      appendBubble('bot', msg);
+      sending = false;
+      document.getElementById('sendBtn').disabled = false;
+      return;
+    }
+    const data = await res.json();
+    if(data.reply){
+      appendBubble('bot', data.reply);
+      history.push({role:'assistant', content: data.reply});
+    }
+    if(data.submitted){
+      appendTicket();
+    }
+  }catch(e){
+    hideTyping();
+    appendBubble('bot', '연결에 문제가 있어요. 잠시 후 다시 시도해주세요.');
+  }finally{
+    sending = false;
+    document.getElementById('sendBtn').disabled = false;
+    input.focus();
+  }
+}
+
+document.getElementById('msgInput').addEventListener('keydown', (e)=>{
+  if(e.key === 'Enter' && !e.shiftKey){
+    e.preventDefault();
+    sendMessage();
+  }
+});
+document.getElementById('msgInput').addEventListener('input', autoResize);
+
+// 첫 인사는 서버 호출 없이 화면에 바로 보여준다(불필요한 API 호출을 아끼고
+// 응답 지연 없이 바로 대화가 시작된 것처럼 느끼게 하기 위함). 이후 고객이
+// 실제로 메시지를 보내는 시점부터 이 인사를 대화 기록에 포함해서 서버로
+// 함께 전송한다 - AI가 자기가 이미 인사했다는 맥락을 알고 있어야 하기 때문.
+appendBubble('bot', GREETING);
+history.push({role:'assistant', content: GREETING});
+</script>
+</body>
+</html>
