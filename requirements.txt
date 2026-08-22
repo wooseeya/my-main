@@ -1,0 +1,20 @@
+fastapi>=0.111
+uvicorn[standard]>=0.30
+anthropic>=0.34
+pydantic>=2.7
+httpx>=0.27
+xmltodict>=0.13
+pypdf>=4.2
+python-multipart>=0.0.9
+python-dotenv>=1.0
+# 등기부등본 업로드(integrations/registry.py) 텍스트 추출용
+pymupdf>=1.24        # import 이름은 fitz - 텍스트 레이어 있는 PDF 추출
+pytesseract>=0.3.10   # 스캔 PDF/이미지 OCR - 시스템에 tesseract-ocr 별도 설치 필요 (아래 참고)
+pillow>=10.0          # pytesseract가 이미지 처리에 사용
+openpyxl>=3.1         # 매물목록 엑셀 다운로드/업로드(백업 및 일괄 추가)용
+
+# launcher.py(GUI 설정창) 실행 자체엔 추가 설치가 필요 없음 - tkinter는 파이썬
+# 표준 설치에 포함되어 있음(리눅스에서 최소 설치 이미지를 썼다면 별도 시스템
+# 패키지 설치가 필요할 수 있음: 예) apt install python3-tk).
+# 아래는 launcher.py를 비개발자에게 .exe로 배포하고 싶을 때만 필요 (개발/실행엔 불필요):
+# pyinstaller>=6.0
