@@ -1,0 +1,24 @@
+# Render Blueprint - 이 파일이 있는 저장소를 Render의 "New + → Blueprint"로
+# 연결하면, 아래 서비스가 자동으로 만들어진다(수동으로 Web Service를 설정하는
+# 것과 동일한 결과를 파일 하나로 대신함). 실제 키 값은 여기 적지 않고, 배포 후
+# Render 대시보드 Environment 탭에서 직접 입력한다(sync: false인 항목들).
+services:
+  - type: web
+    name: listing-verify-key-server
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn key_server:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: ACCESS_TOKEN
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: KAKAO_KEY
+        sync: false
+      - key: DATA_SERVICE_KEY
+        sync: false
+      - key: VWORLD_KEY
+        sync: false
+      - key: VWORLD_DOMAIN
+        sync: false
